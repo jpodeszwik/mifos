@@ -210,6 +210,25 @@
     </batch:job>
     <bean name="BranchReportTaskTasklet" class="org.mifos.framework.components.batchjobs.helpers.BranchReportHelper" />
 
+ <!--
+                RepairGLIMLoanAccountsTask:
+    -->
+    <bean name="RepairGLIMLoanAccountsTask" parent="jobDetailBase" class="org.springframework.scheduling.quartz.JobDetailBean">
+      <property name="jobClass" value="org.mifos.framework.components.batchjobs.helpers.RepairGLIMLoanAccountsTask" />
+      <property name="name" value="RepairGLIMLoanAccountsTaskJob" />
+    </bean>
+    <bean id="repairGLIMLoanAccountsTaskTrigger" class="org.springframework.scheduling.quartz.CronTriggerBean">
+        <property name="name" value="RepairGLIMLoanAccountsTaskJob"/>
+        <property name="jobDetail" ref="RepairGLIMLoanAccountsTask" />
+        <property name="cronExpression" value="0 0 0 * * ?" />
+    </bean>
+    <batch:job id="RepairGLIMLoanAccountsTaskJob" parent="jobBase" job-repository="jobRepository">
+        <batch:step id="RepairGLIMLoanAccountsTask-step-1">
+            <batch:tasklet ref="RepairGLIMLoanAccountsTaskTasklet" />
+        </batch:step>
+    </batch:job>
+    <bean name="RepairGLIMLoanAccountsTaskTasklet" class="org.mifos.framework.components.batchjobs.helpers.RepairGLIMLoanAccountsHelper" />
+
     <bean id="schedulerFactoryBean" class="org.springframework.scheduling.quartz.SchedulerFactoryBean">
         <property name="quartzProperties">
             <props>
@@ -233,6 +252,7 @@
                 <ref bean="generateMeetingsForCustomerAndSavingsTaskTrigger" />
                 <ref bean="branchReportTaskTrigger" />
                 <ref bean="applyPenaltyToLoanAccountsTaskTrigger"/>
+                <ref bean="repairGLIMLoanAccountsTaskTrigger"/>
             </list>
         </property>
     </bean>

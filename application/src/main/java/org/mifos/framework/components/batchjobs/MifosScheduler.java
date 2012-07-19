@@ -251,6 +251,9 @@ public class MifosScheduler {
         if ("BranchReportTask".equals(jobName)) {
             return "BranchReportHelper";
         }
+        if ("RepairGLIMLoanAccountsTask".equals(jobName)) {
+            return "RepairGLIMLoanAccountsHelper";
+        }
 
         throw new TaskSystemException("Unknown helper for " + jobName);
     }

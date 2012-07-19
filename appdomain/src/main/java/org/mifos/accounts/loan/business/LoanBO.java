@@ -69,6 +69,7 @@ import org.mifos.accounts.fees.util.helpers.RateAmountFlag;
 import org.mifos.accounts.fund.business.FundBO;
 import org.mifos.accounts.loan.business.service.LoanBusinessService;
 import org.mifos.accounts.loan.persistance.LegacyLoanDao;
+import org.mifos.accounts.loan.persistance.LoanDao;
 import org.mifos.accounts.loan.struts.action.validate.ProductMixValidator;
 import org.mifos.accounts.loan.util.helpers.InstallmentPrincipalAndInterest;
 import org.mifos.accounts.loan.util.helpers.LoanConstants;
@@ -158,12 +159,14 @@ import org.mifos.dto.screen.LoanAccountDetailDto;
 import org.mifos.framework.business.AbstractEntity;
 import org.mifos.framework.exceptions.PersistenceException;
 import org.mifos.framework.exceptions.ServiceException;
+import org.mifos.framework.hibernate.helper.StaticHibernateUtil;
 import org.mifos.framework.util.CollectionUtils;
 import org.mifos.framework.util.DateTimeService;
 import org.mifos.framework.util.helpers.Constants;
 import org.mifos.framework.util.helpers.DateUtils;
 import org.mifos.framework.util.helpers.Money;
 import org.mifos.framework.util.helpers.MoneyUtils;
+import org.mifos.framework.util.helpers.SessionUtils;
 import org.mifos.framework.util.helpers.Transformer;
 import org.mifos.schedule.ScheduledDateGeneration;
 import org.mifos.schedule.ScheduledEvent;
@@ -1794,7 +1797,7 @@ public class LoanBO extends AccountBO implements Loan {
                     paymentData.getOverpaymentAmount(), OverpaymentStatus.UNCLEARED.getValue());
             addAccountOverpayment(overpaymentEntity);
         }
-        applyPaymentToMemberAccounts(paymentData); // GLIM
+        //applyPaymentToMemberAccounts(paymentData); // GLIM
         return accountPaymentEntity;
     }
 
@@ -3729,4 +3732,46 @@ public class LoanBO extends AccountBO implements Loan {
     public boolean isIndividualLoan(){
         return this.parentAccount != null && this.accountType.getAccountTypeId().equals(AccountTypes.INDIVIDUAL_LOAN_ACCOUNT.getValue()); 
     }
+    
+/*
+* Mifos-5692 specific code
+*/
+
+    public void applyMifos5692fix()
+    {
+        List<AccountPaymentEntity> parentPayments = getAccountPayments();
+        
+        List<LoanBO> childLoans = ApplicationContextProvider.getBean(LoanDao.class).findIndividualLoans(getAccountId());
+        
+        int numberOfChildPayments = childLoans.get(0).getAccountPayments().size();
+        
+        if(parentPayments.size()!=numberOfChildPayments)
+        {
+            
+            //uwaga na to -2
+            for(int i = parentPayments.size()-2 ; i >= numberOfChildPayments-1 ; i--)
+            {
+                AccountPaymentEntity currentPayment = parentPayments.get(i);
+                try {
+                    PersonnelBO currentUser;
+                
+                    currentUser = legacyPersonnelDao.getPersonnel((short) 1);
+                    
+                    StaticHibernateUtil.startTransaction();
+                    PaymentData paymentData = new PaymentData(currentPayment.getAmount(), currentUser,currentPayment.getPaymentType().getId(),currentPayment.getPaymentDate());
+                    applyPaymentToMemberAccounts(paymentData);
+                    StaticHibernateUtil.commitTransaction();
+                    
+                } catch (PersistenceException e) {
+                    e.printStackTrace();
+                } catch (AccountException e) {
+                    e.printStackTrace();
+                }
+                
+            }
+        }
+    }
+
 }
+
+

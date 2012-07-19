@@ -316,7 +316,25 @@
             account.parentAccount.accountId =:accountId
             group by account.accountId]]>
     </query>
-
+    <query name="accounts.findAllIndividualLoans">
+        <![CDATA[from org.mifos.accounts.loan.business.LoanBO account
+            where
+            account.parentAccount is not null
+            group by account.accountId]]>
+    </query>
+    
+    <query name="accounts.findAllParentLoans">
+        <![CDATA[from org.mifos.accounts.loan.business.LoanBO account
+            where
+            account.memberAccounts is not empty
+            group by account.accountId]]>
+    </query>
+ 	<!--   
+    <query name="accounts.findAllParentLoans">
+        <![CDATA[select parentAccount from org.mifos.accounts.loan.business.LoanBO account
+            group by parentAccount]]>
+    </query>
+-->
     <query name="accounts.retrieveLastTrxn">
         <![CDATA[from org.mifos.accounts.savings.business.SavingsTrxnDetailEntity savingsTrxn
             where  savingsTrxn.accountTrxnId = (select max(savingsTrxn1.accountTrxnId)
