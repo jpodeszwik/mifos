@@ -3729,4 +3729,36 @@ public class LoanBO extends AccountBO implements Loan {
     public boolean isIndividualLoan(){
         return this.parentAccount != null && this.accountType.getAccountTypeId().equals(AccountTypes.INDIVIDUAL_LOAN_ACCOUNT.getValue()); 
     }
+    
+    @Override
+    public void setAccountState(final AccountStateEntity accountState) {
+        if(!accountState.equals(getAccountState()) && (getParentAccount()==null || (getParentAccount()!=null && getParentAccount().getAccountState().equals(accountState))))
+        {
+            super.setAccountState(accountState);
+            for(LoanBO memberAccount : getMemberAccounts()) {
+                memberAccount.setUserContext(getUserContext());
+                memberAccount.setAccountState(accountState);
+            }
+        }
+    }
+    
+    @Override
+    public void changeStatus(final AccountState newStatus, final Short flagId, final String comment, PersonnelBO loggedInUser) throws AccountException {
+        super.changeStatus(newStatus, flagId, comment, loggedInUser);
+        for(LoanBO memberAccount : getMemberAccounts()) {
+            memberAccount.setUserContext(getUserContext());
+            memberAccount.changeStatus(newStatus, flagId, comment, loggedInUser);
+        }     
+    }
+    
+    @Override
+    public void changeStatus(final AccountState newStatus, final Short flagId, final String comment,
+                             final PersonnelBO loggedInUser, final Date transactionDate) throws AccountException {
+        super.changeStatus(newStatus, flagId, comment, loggedInUser, transactionDate);
+        for(LoanBO memberAccount : getMemberAccounts()) {
+            memberAccount.setUserContext(getUserContext());
+            memberAccount.changeStatus(newStatus, flagId, comment, loggedInUser, transactionDate);
+        }
+    }
+    
 }

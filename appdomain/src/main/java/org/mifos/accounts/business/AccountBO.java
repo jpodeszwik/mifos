@@ -411,6 +411,7 @@ public class AccountBO extends AbstractBusinessObject {
 
     protected void setAccountState(final AccountStateEntity accountState) {
         this.accountState = accountState;
+        int x = 0;
     }
 
     public void setPersonnel(final PersonnelBO personnel) {
