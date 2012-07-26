@@ -3733,17 +3733,21 @@ public class LoanBO extends AccountBO implements Loan {
     }
     
     private void setLoanState(AccountStateEntity newState){
-        setAccountState(newState);
-        for(LoanBO memberAccount : getMemberAccounts()) {
-            memberAccount.setAccountState(newState); 
+        if(getState().getValue()!=newState.getId() && (getParentAccount()==null || getParentAccount().getState().getValue()==newState.getId())){
+            setAccountState(newState);
+            for(LoanBO memberAccount : getMemberAccounts()) {
+                memberAccount.setAccountState(newState); 
+            }
         }
     }
     
     private void changeLoanStatus(AccountState newStatus, Short flagId, String comment, PersonnelBO loggedInUser) throws AccountException
     {
-        changeStatus(newStatus, flagId, comment, loggedInUser);
-        for(LoanBO memberAccount : getMemberAccounts()) {
-            memberAccount.changeStatus(newStatus, flagId, comment, loggedInUser);
+        if(getState().getValue()!=newStatus.getValue() && (getParentAccount()==null || getParentAccount().getState().getValue()==newStatus.getValue())){
+            changeStatus(newStatus, flagId, comment, loggedInUser);
+            for(LoanBO memberAccount : getMemberAccounts()) {
+                memberAccount.changeStatus(newStatus, flagId, comment, loggedInUser);
+            }
         }
     }
     
