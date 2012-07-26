@@ -1146,7 +1146,7 @@ public class LoanBO extends AccountBO implements Loan {
         final AccountStateEntity newState = new AccountStateEntity(AccountState.LOAN_ACTIVE_IN_GOOD_STANDING);
         this.addAccountStatusChangeHistory(new AccountStatusChangeHistoryEntity(this.getAccountState(), newState,
                 loggedInUser, this));
-        this.setAccountState(newState);
+        this.setLoanState(newState);
 
         //
         // Client performance entry
@@ -1282,7 +1282,7 @@ public class LoanBO extends AccountBO implements Loan {
                     AccountStateEntity.class, AccountStates.LOANACC_OBLIGATIONSMET);
             addAccountStatusChangeHistory(new AccountStatusChangeHistoryEntity(getAccountState(), newAccountState,
                     legacyPersonnelDao.getPersonnel(personnelId), this));
-            setAccountState(legacyMasterDao.getPersistentObject(AccountStateEntity.class,
+            setLoanState(legacyMasterDao.getPersistentObject(AccountStateEntity.class,
                     AccountStates.LOANACC_OBLIGATIONSMET));
             setClosedDate(transactionDate);
 
@@ -1335,7 +1335,7 @@ public class LoanBO extends AccountBO implements Loan {
         AccountStatusChangeHistoryEntity historyEntity = new AccountStatusChangeHistoryEntity(this.getAccountState(),
                 stateEntity, this.getPersonnel(), this);
         this.addAccountStatusChangeHistory(historyEntity);
-        this.setAccountState(stateEntity);
+        this.setLoanState(stateEntity);
 
         try {
             String systemDate = DateUtils.getCurrentDate();
@@ -1674,7 +1674,7 @@ public class LoanBO extends AccountBO implements Loan {
     }
 
     public final void reverseLoanDisbursal(final PersonnelBO loggedInUser, final String note) throws AccountException {
-        changeStatus(AccountState.LOAN_CANCELLED, AccountStateFlag.LOAN_REVERSAL.getValue(), note, loggedInUser);
+        changeLoanStatus(AccountState.LOAN_CANCELLED, AccountStateFlag.LOAN_REVERSAL.getValue(), note, loggedInUser);
         if (getAccountPayments() != null && getAccountPayments().size() > 0) {
             for (AccountPaymentEntity accountPayment : getAccountPayments()) {
                 if (accountPayment.getAmount().isGreaterThanZero()) {
@@ -1909,7 +1909,8 @@ public class LoanBO extends AccountBO implements Loan {
         }
         return false;
     }
-
+    
+    
     @Override
     protected void updateInstallmentAfterAdjustment(final List<AccountTrxnEntity> reversedTrxns, PersonnelBO loggedInUser)
             throws AccountException {
@@ -2013,15 +2014,15 @@ public class LoanBO extends AccountBO implements Loan {
                     if (daysInArrears == 0) {
                         newStatus = AccountState.LOAN_ACTIVE_IN_GOOD_STANDING;
                     }
-                    changeStatus(newStatus, null, "Account Reopened", loggedInUser);
+                    changeLoanStatus(newStatus, null, "Account Reopened", loggedInUser);
                 } else {
                     if (daysInArrears == 0) {
                         if (!currentAccountState.isLoanActiveInGoodStanding()) {
-                            changeStatus(AccountState.LOAN_ACTIVE_IN_GOOD_STANDING, null, "Account Adjusted", loggedInUser);
+                            changeLoanStatus(AccountState.LOAN_ACTIVE_IN_GOOD_STANDING, null, "Account Adjusted", loggedInUser);
                         }
                     } else {
                         if (!currentAccountState.isLoanActiveInBadStanding()) {
-                            changeStatus(AccountState.LOAN_ACTIVE_IN_BAD_STANDING, null, "Account Adjusted", loggedInUser);
+                            changeLoanStatus(AccountState.LOAN_ACTIVE_IN_BAD_STANDING, null, "Account Adjusted", loggedInUser);
                             handleArrearsAging();
                         }
                     }
@@ -2840,8 +2841,9 @@ public class LoanBO extends AccountBO implements Loan {
             throws AccountException {
         AccountStateEntity accountState = this.getAccountState();
         try {
-            setAccountState(legacyMasterDao.getPersistentObject(AccountStateEntity.class,
+            setLoanState(legacyMasterDao.getPersistentObject(AccountStateEntity.class,
                     newAccountState.getValue()));
+            
         } catch (PersistenceException e) {
             throw new AccountException(e);
         }
@@ -3440,7 +3442,7 @@ public class LoanBO extends AccountBO implements Loan {
         AccountNotesEntity accountNotesEntity = new AccountNotesEntity(approvalDate.toDateMidnight().toDate(), comment, createdBy, this);
 
         this.addAccountStatusChangeHistory(historyEntity);
-        this.setAccountState(approvedState);
+        this.setLoanState(approvedState);
         this.addAccountNotes(accountNotesEntity);
     }
 
@@ -3452,7 +3454,7 @@ public class LoanBO extends AccountBO implements Loan {
         final AccountStateEntity newState = new AccountStateEntity(AccountState.LOAN_ACTIVE_IN_GOOD_STANDING);
         addAccountStatusChangeHistory(new AccountStatusChangeHistoryEntity(getAccountState(), newState,
                 createdBy, this));
-        setAccountState(newState);
+        setLoanState(newState);
 
         if (getPerformanceHistory() != null) {
             getPerformanceHistory().setLoanMaturityDate(getLastInstallmentAccountAction().getActionDate());
@@ -3729,4 +3731,21 @@ public class LoanBO extends AccountBO implements Loan {
     public boolean isIndividualLoan(){
         return this.parentAccount != null && this.accountType.getAccountTypeId().equals(AccountTypes.INDIVIDUAL_LOAN_ACCOUNT.getValue()); 
     }
+    
+    private void setLoanState(AccountStateEntity newState){
+        setAccountState(newState);
+        for(LoanBO memberAccount : getMemberAccounts()) {
+            memberAccount.setAccountState(newState); 
+        }
+    }
+    
+    private void changeLoanStatus(AccountState newStatus, Short flagId, String comment, PersonnelBO loggedInUser) throws AccountException
+    {
+        changeStatus(newStatus, flagId, comment, loggedInUser);
+        for(LoanBO memberAccount : getMemberAccounts()) {
+            memberAccount.changeStatus(newStatus, flagId, comment, loggedInUser);
+        }
+    }
+    
+    
 }
