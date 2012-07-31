@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.mifos.accounts.loan.business.LoanBO;
+import org.mifos.accounts.loan.business.LoanScheduleEntity;
 import org.mifos.accounts.loan.util.helpers.LoanConstants;
 import org.mifos.accounts.savings.persistence.GenericDao;
 import org.mifos.application.NamedQueryConstants;
@@ -83,5 +84,20 @@ public class LoanDaoHibernate implements LoanDao {
         }
 
         return individualLoans;
+    }
+    
+    @Override
+    public List<LoanScheduleEntity> findSchedules(final Integer accountId) {
+        List<LoanScheduleEntity> schedule = new ArrayList<LoanScheduleEntity>();
+        Map<String, Integer> queryParameters = new HashMap<String, Integer>();
+        
+        queryParameters.put("id", accountId);
+        List<LoanScheduleEntity> queryResult = (List<LoanScheduleEntity>) this.genericDao.executeNamedQuery("loanScheduleEntity.getSchedulesForAccountId", queryParameters);
+        
+        if (queryResult != null) {
+            schedule.addAll(queryResult);
+        }
+        
+        return schedule;
     }
 }

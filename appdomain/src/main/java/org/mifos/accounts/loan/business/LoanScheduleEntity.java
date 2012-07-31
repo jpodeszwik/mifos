@@ -22,6 +22,7 @@ package org.mifos.accounts.loan.business;
 
 import static org.mifos.framework.util.helpers.NumberUtils.min;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -34,6 +35,7 @@ import org.mifos.accounts.business.AccountBO;
 import org.mifos.accounts.business.AccountFeesActionDetailEntity;
 import org.mifos.accounts.business.AccountPaymentEntity;
 import org.mifos.accounts.business.AccountPenaltiesEntity;
+import org.mifos.accounts.fees.util.helpers.FeeStatus;
 import org.mifos.accounts.loan.persistance.LegacyLoanDao;
 import org.mifos.accounts.loan.schedule.domain.Installment;
 import org.mifos.accounts.loan.util.helpers.LoanConstants;
@@ -48,6 +50,7 @@ import org.mifos.customers.business.CustomerBO;
 import org.mifos.customers.personnel.business.PersonnelBO;
 import org.mifos.framework.util.DateTimeService;
 import org.mifos.framework.util.helpers.Money;
+import org.mifos.framework.util.helpers.MoneyUtils;
 import org.mifos.platform.util.CollectionUtils;
 
 public class LoanScheduleEntity extends AccountActionDateEntity {
@@ -891,4 +894,53 @@ public class LoanScheduleEntity extends AccountActionDateEntity {
         }
         return penaltyAmount;
     }
+	
+	public Money getTotalAmountOfInstallment(){
+	    Money money = new Money(getCurrency());
+	    money = money.add(getTotalFees())
+	            .add(getTotalPenalty())
+	            .add(getPrincipal())
+	            .add(getInterest())
+	            .add(getMiscFee());
+	    
+	    return money;
+	}
+	
+	public Money getTotalPaidAmount(){
+	    Money money = new Money(getCurrency());
+	    money = money.add(getInterestPaid())
+	            .add(getTotalFeesPaid())
+	            .add(getTotalPenaltyPaid())
+	            .add(getPrincipalPaid())
+	            .add(getMiscFeePaid());
+	    
+	    return money;
+	}
+	
+	public BigDecimal getPaidProportion() {
+	    return getTotalPaidAmount().divide(getTotalAmountOfInstallment());
+	}
+	
+	public Money getAmountToBePaidToGetExpectedProportion(BigDecimal expected) {
+	    Money amount = getTotalAmountOfInstallment().multiply(expected);
+	    amount = MoneyUtils.currencyRound(amount);
+	    amount = amount.subtract(getTotalPaidAmount());
+	    
+	    return amount;
+	}
+	
+	public void removeAllFees() {
+        Set<AccountFeesActionDetailEntity> accountFeesActionDetailSet = this.getAccountFeesActionDetails();
+        for (AccountFeesActionDetailEntity accountFeesActionDetailEntity : accountFeesActionDetailSet) {
+            this.removeAccountFeesActionDetailEntity(accountFeesActionDetailEntity);
+        }
+	}
+	
+	public void removeAllPenalties() {
+	    Set<LoanPenaltyScheduleEntity> loanPenaltiesScheduleEntitSet = this.getLoanPenaltyScheduleEntities();
+	    for(LoanPenaltyScheduleEntity penalty : loanPenaltiesScheduleEntitSet) {
+	        this.removeLoanPenaltySchedule(penalty);
+	    }
+
+	}
 }

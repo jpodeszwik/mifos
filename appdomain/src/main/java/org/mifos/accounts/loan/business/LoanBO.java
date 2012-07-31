@@ -62,6 +62,7 @@ import org.mifos.accounts.exceptions.AccountException;
 import org.mifos.accounts.fees.business.FeeBO;
 import org.mifos.accounts.fees.business.FeeFormulaEntity;
 import org.mifos.accounts.fees.business.RateFeeBO;
+import org.mifos.accounts.fees.persistence.FeeDao;
 import org.mifos.accounts.fees.util.helpers.FeeFormula;
 import org.mifos.accounts.fees.util.helpers.FeePayment;
 import org.mifos.accounts.fees.util.helpers.FeeStatus;
@@ -69,6 +70,7 @@ import org.mifos.accounts.fees.util.helpers.RateAmountFlag;
 import org.mifos.accounts.fund.business.FundBO;
 import org.mifos.accounts.loan.business.service.LoanBusinessService;
 import org.mifos.accounts.loan.persistance.LegacyLoanDao;
+import org.mifos.accounts.loan.persistance.LoanDao;
 import org.mifos.accounts.loan.struts.action.validate.ProductMixValidator;
 import org.mifos.accounts.loan.util.helpers.InstallmentPrincipalAndInterest;
 import org.mifos.accounts.loan.util.helpers.LoanConstants;
@@ -76,6 +78,7 @@ import org.mifos.accounts.loan.util.helpers.LoanExceptionConstants;
 import org.mifos.accounts.loan.util.helpers.LoanPaymentTypes;
 import org.mifos.accounts.loan.util.helpers.RepaymentScheduleInstallment;
 import org.mifos.accounts.penalties.business.PenaltyBO;
+import org.mifos.accounts.penalties.persistence.PenaltyDao;
 import org.mifos.accounts.penalties.util.helpers.PenaltyStatus;
 import org.mifos.accounts.persistence.LegacyAccountDao;
 import org.mifos.accounts.productdefinition.business.AmountRange;
@@ -85,6 +88,7 @@ import org.mifos.accounts.productdefinition.business.LoanOfferingBO;
 import org.mifos.accounts.productdefinition.persistence.LoanPrdPersistence;
 import org.mifos.accounts.productdefinition.util.helpers.GraceType;
 import org.mifos.accounts.productdefinition.util.helpers.InterestType;
+import org.mifos.accounts.servicefacade.UserContextFactory;
 import org.mifos.accounts.util.helpers.AccountActionTypes;
 import org.mifos.accounts.util.helpers.AccountConstants;
 import org.mifos.accounts.util.helpers.AccountExceptionConstants;
@@ -151,6 +155,7 @@ import org.mifos.customers.group.business.GroupPerformanceHistoryEntity;
 import org.mifos.customers.persistence.CustomerPersistence;
 import org.mifos.customers.personnel.business.PersonnelBO;
 import org.mifos.customers.personnel.persistence.LegacyPersonnelDao;
+import org.mifos.customers.personnel.util.helpers.PersonnelConstants;
 import org.mifos.dto.domain.AccountPaymentParametersDto;
 import org.mifos.dto.domain.CustomFieldDto;
 import org.mifos.dto.domain.PrdOfferingDto;
@@ -158,17 +163,20 @@ import org.mifos.dto.screen.LoanAccountDetailDto;
 import org.mifos.framework.business.AbstractEntity;
 import org.mifos.framework.exceptions.PersistenceException;
 import org.mifos.framework.exceptions.ServiceException;
+import org.mifos.framework.hibernate.helper.StaticHibernateUtil;
 import org.mifos.framework.util.CollectionUtils;
 import org.mifos.framework.util.DateTimeService;
 import org.mifos.framework.util.helpers.Constants;
 import org.mifos.framework.util.helpers.DateUtils;
 import org.mifos.framework.util.helpers.Money;
 import org.mifos.framework.util.helpers.MoneyUtils;
+import org.mifos.framework.util.helpers.SessionUtils;
 import org.mifos.framework.util.helpers.Transformer;
 import org.mifos.schedule.ScheduledDateGeneration;
 import org.mifos.schedule.ScheduledEvent;
 import org.mifos.schedule.ScheduledEventFactory;
 import org.mifos.schedule.internal.HolidayAndWorkingDaysAndMoratoriaScheduledDateGeneration;
+import org.mifos.security.util.UserContext;
 import org.mifos.service.BusinessRuleException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -3738,4 +3746,188 @@ public class LoanBO extends AccountBO implements Loan {
     public boolean isIndividualLoan(){
         return this.parentAccount != null && this.accountType.getAccountTypeId().equals(AccountTypes.INDIVIDUAL_LOAN_ACCOUNT.getValue()); 
     }
+    
+    private List<LoanScheduleEntity> getLoanInstallments() {     
+        List<AccountActionDateEntity> installments = getAllInstallments();
+        List<LoanScheduleEntity> schedule = new ArrayList<LoanScheduleEntity>();
+        
+        for (AccountActionDateEntity accountActionDateEntity : installments) {
+            schedule.add((LoanScheduleEntity) accountActionDateEntity);
+        }
+        
+        return schedule;
+    }
+    
+    public void applyMifos5722Fix() {
+        
+        if(!validateNumberOfInstallments())
+            return;
+        
+        if(needsMifos5722Repair()) {
+            try {
+                PersonnelBO personnel = legacyPersonnelDao.getPersonnel((short) 1);
+                UserContext userContext = new UserContext();
+                userContext.setId(PersonnelConstants.SYSTEM_USER);
+                String comment = "Mifos-5722";
+                
+                //clear accounts from previous payments
+                for(LoanBO memberAccount : getMemberAccounts()) {
+                    for(AccountPaymentEntity payment : getAccountPayments()) {
+                        try {
+                            memberAccount.setUserContext(userContext);
+                            memberAccount.adjustPayment(payment, personnel, comment);
+                        } catch (AccountException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+
+                
+                
+                List<LoanScheduleEntity> parentInstallments = getLoanInstallments();
+                
+                for(LoanBO memberAccount : getMemberAccounts()) {
+                        List<LoanScheduleEntity> memberInstallments = memberAccount.getLoanInstallments();
+                                           
+                        for(int i = 0 ; i < parentInstallments.size() ; i++) {
+                            LoanScheduleEntity parentInstallment = parentInstallments.get(i);
+                            LoanScheduleEntity memberInstallment = memberInstallments.get(i);
+                            
+                            memberInstallment.removeAllFees();
+                            memberInstallment.removeAllPenalties();
+                            
+                            
+                            Money miscFee = parentInstallment.getMiscFee().divide(memberAccount.calcFactorOfEntireLoan());
+                            memberInstallment.setMiscFee(miscFee);
+                            
+                            Money miscPenalty = parentInstallment.getMiscPenalty().divide(memberAccount.calcFactorOfEntireLoan());
+                            memberInstallment.setMiscPenalty(miscPenalty);
+                            
+                            
+                        }
+                }
+                applyAllFeesAndPenaltiesToMemberAccounts();
+            } catch (PersistenceException e1) {
+                e1.printStackTrace();
+            }
+        }     
+    }
+    
+    private void applyAllFeesAndPenaltiesToMemberAccounts() {
+        List<LoanScheduleEntity> parentInstallments = getLoanInstallments();
+        
+        for(LoanBO memberAccount : getMemberAccounts()) {
+            List<LoanScheduleEntity> memberInstallments = memberAccount.getLoanInstallments();
+            
+            for(int i = 0 ; i < parentInstallments.size() ; i++) {
+                LoanScheduleEntity parentInstallment = parentInstallments.get(i);
+                LoanScheduleEntity memberInstallment = memberInstallments.get(i);
+                
+                for(AccountFeesActionDetailEntity fee : parentInstallment.getAccountFeesActionDetailsSortedByFeeId()) {
+                    try {
+                        memberAccount.applyOneTimeFee(fee.getFee(), fee.getFeeAmount().divide(memberAccount.calcFactorOfEntireLoan()).getAmountDoubleValue(), memberInstallment);
+                    } catch (AccountException e) {
+                        e.printStackTrace();
+                    }
+                }
+                
+                for(LoanPenaltyScheduleEntity penalty : parentInstallment.getLoanPenaltyScheduleEntities()) {
+                    memberAccount.applyPenalty(penalty.getPenaltyAmount().divide(memberAccount.calcFactorOfEntireLoan()), memberInstallment.getInstallmentId(),penalty.getAccountPenalty(), penalty.getLastApplied());
+                }
+                
+                
+            }
+        }
+        
+    }
+    
+    private boolean feesNeedRepair() {
+        LoanBO memberAccount = getMemberAccounts().iterator().next();
+        boolean result = (getAccountFeesIncludingInactiveFees().size() != memberAccount.getAccountFeesIncludingInactiveFees().size())
+                | !(getMiscFee().divide(memberAccount.calcFactorOfEntireLoan()).subtract(memberAccount.getMiscFee()).isTinyAmount());
+        
+        return result;
+    }
+    
+    private boolean penaltiesNeedRepair() {
+        LoanBO memberAccount = getMemberAccounts().iterator().next();
+        
+        boolean result = (getAccountPenaltiesIncludingInactivePenalties().size() != memberAccount.getAccountPenaltiesIncludingInactivePenalties().size())
+                | !(getMiscPenalty().divide(memberAccount.calcFactorOfEntireLoan()).subtract(memberAccount.getMiscPenalty()).isTinyAmount());
+        
+        return result;
+    }
+    
+    private boolean paymentsNeedRepair() {
+        LoanBO memberAccount = getMemberAccounts().iterator().next();
+        
+        boolean result = (getAccountPayments().size() != memberAccount.getAccountPayments().size());
+        
+        return result;
+    }
+    private boolean needsMifos5722Repair() {
+        boolean result = paymentsNeedRepair()
+                | feesNeedRepair()
+                | penaltiesNeedRepair();
+        
+        //TEST
+        result = true;
+        return result;
+    }
+    
+    private boolean validateNumberOfInstallments() {
+        LoanBO memberAccount = getMemberAccounts().iterator().next();
+        
+        return getLoanInstallments().size() == memberAccount.getLoanInstallments().size();
+    }
+
 }
+
+
+/*List<AccountFeesActionDetailEntity> accountFees = installments.get(0).getAccountFeesActionDetailsSortedByFeeId();
+
+for(LoanBO memberAccount : getMemberAccounts()) {
+    List<LoanScheduleEntity> memberInstallments = memberAccount.getLoanInstallments();
+    
+    if(installments.size()==memberInstallments.size()){
+        for(int i = 0 ; i < installments.size() ; i++) {
+            
+            LoanScheduleEntity parentInstallment = installments.get(i);
+            LoanScheduleEntity memberInstallment = memberInstallments.get(i);
+            
+            List<AccountFeesActionDetailEntity> parentFees = parentInstallment.getAccountFeesActionDetailsSortedByFeeId();
+            List<AccountFeesActionDetailEntity> memberFees = memberInstallment.getAccountFeesActionDetailsSortedByFeeId();
+            
+            for(int j = memberFees.size() ; j < parentFees.size() ; j++) {
+                memberAccount.applyChargeToMemberAccounts(parentFees.get(j).getFee().getFeeId(),parentFees.get(j).getFeeAmount().getAmountDoubleValue() , false);
+            }
+            Money parentMiscFee = parentInstallment.getMiscFee();
+            Money memberMiscFee = memberInstallment.getMiscFee();
+            
+            int x = 0;
+        }    
+    }
+    
+    private void applyChargeToMemberAccounts(Short chargeId, Double chargeAmount, boolean isPenaltyType) {
+        try {
+            if (isPenaltyType && !chargeId.equals(Short.valueOf(AccountConstants.MISC_PENALTY))) {
+                PenaltyBO penalty = ApplicationContextProvider.getBean(PenaltyDao.class).findPenaltyById(chargeId.intValue());
+                addAccountPenalty(new AccountPenaltiesEntity(this, penalty, chargeAmount));
+            } else {
+                FeeBO fee = ApplicationContextProvider.getBean(FeeDao.class).findById(chargeId);
+    
+                if (fee instanceof RateFeeBO) {
+                    applyCharge(chargeId, chargeAmount);
+                } else {
+                    Double radio = getLoanAmount().getAmount().doubleValue()
+                            / getParentAccount().getLoanAmount().getAmount().doubleValue();
+    
+                    applyCharge(chargeId, chargeAmount * radio);
+                }
+            }
+        }
+        catch (Exception e) {
+            int x = 0;
+        }
+    }
+}*/

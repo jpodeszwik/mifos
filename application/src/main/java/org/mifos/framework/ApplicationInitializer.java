@@ -26,6 +26,7 @@ import java.lang.reflect.Field;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
@@ -54,6 +55,8 @@ import org.mifos.accounts.financial.exceptions.FinancialException;
 import org.mifos.accounts.financial.util.helpers.FinancialInitializer;
 import org.mifos.accounts.loan.business.LoanBO;
 import org.mifos.accounts.loan.business.LoanScheduleEntity;
+import org.mifos.accounts.loan.util.helpers.LoanConstants;
+import org.mifos.application.NamedQueryConstants;
 import org.mifos.application.admin.servicefacade.CustomizedTextServiceFacade;
 import org.mifos.application.admin.servicefacade.PersonnelServiceFacade;
 import org.mifos.application.admin.system.ShutdownManager;
@@ -279,6 +282,23 @@ public class ApplicationInitializer implements ServletContextListener, ServletRe
 					StaticHibernateUtil.closeSession();
 				}
             }
+            boolean key5722Exists = false;
+            key5722Exists = true;
+            if(!key5722Exists) {
+                try {
+                    StaticHibernateUtil.startTransaction();
+
+                    applyMifos5722Fix();
+
+                    StaticHibernateUtil.commitTransaction();
+
+                } catch (AccountException e) {
+                    StaticHibernateUtil.rollbackTransaction();
+                    e.printStackTrace();
+                } finally {
+                    StaticHibernateUtil.closeSession();
+                }
+            }
         }
 
     }
@@ -314,6 +334,24 @@ public class ApplicationInitializer implements ServletContextListener, ServletRe
         }
 
     }
+    
+    @SuppressWarnings("unchecked")
+    private void applyMifos5722Fix() throws AccountException {
+        Session session = StaticHibernateUtil.getSessionTL();
+        List<LoanBO> fixLoans;
+        Query query = session.getNamedQuery("accounts.findAllParentLoans");
+        
+        fixLoans = query.list();
+
+        if (fixLoans != null && fixLoans.size() > 0) {
+            for (LoanBO fixLoan : fixLoans) {
+                fixLoan.applyMifos5722Fix();
+            }
+        }
+        
+        int x = 0;
+    }
+    
 
     private void initializeDBConnectionForHibernate(DatabaseMigrator migrator) {
         try {

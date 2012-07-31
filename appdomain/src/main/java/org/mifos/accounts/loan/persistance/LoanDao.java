@@ -23,6 +23,7 @@ package org.mifos.accounts.loan.persistance;
 import java.util.List;
 
 import org.mifos.accounts.loan.business.LoanBO;
+import org.mifos.accounts.loan.business.LoanScheduleEntity;
 import org.mifos.dto.domain.SurveyDto;
 
 public interface LoanDao {
@@ -36,4 +37,6 @@ public interface LoanDao {
     List<SurveyDto> getAccountSurveyDto(Integer accountId);
 
     List<LoanBO> findIndividualLoans(Integer accountId);
+    
+    List<LoanScheduleEntity> findSchedules(Integer accountId);
 }

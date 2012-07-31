@@ -85,5 +85,12 @@
                  where loanSchedule.id in (:ids)
         ]]>
     </query>
+    
+    <query name="loanScheduleEntity.getSchedulesForAccountId">
+        <![CDATA[ from org.mifos.accounts.loan.business.LoanScheduleEntity loanSchedule
+            where loanSchedule.account.id =:id
+            order by actionDate
+        ]]>
+    </query>
 
 </hibernate-mapping>
